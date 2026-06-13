@@ -1,0 +1,16 @@
+{
+  "name": "Config Watcher",
+  "description": "Notifies modules when infrastructure services change at runtime via server-streaming gRPC.",
+  "version": "0.1.0",
+  "author": "MuxCore Media",
+  "roles": ["config"],
+  "capabilities": ["config.watcher"],
+  "contracts": [
+    {
+      "repo": "github.com/Muxcore-Media/core/pkg/contracts",
+      "interface": "ConfigWatcher",
+      "version": "v0.4.0"
+    }
+  ],
+  "minCoreVersion": "0.4.0"
+}

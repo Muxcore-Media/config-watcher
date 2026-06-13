@@ -1,0 +1,15 @@
+syntax = "proto3";
+package muxcore.configwatcher.v1;
+option go_package = "github.com/Muxcore-Media/config-watcher/internal/adminv1";
+
+message ReportModuleChangeRequest {
+  string event_type = 1;
+  string module_id = 2;
+  string capability = 3;
+}
+
+message ReportModuleChangeResponse {}
+
+service ConfigWatcherAdminService {
+  rpc ReportModuleChange(ReportModuleChangeRequest) returns (ReportModuleChangeResponse);
+}
