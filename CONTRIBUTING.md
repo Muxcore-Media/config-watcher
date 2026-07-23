@@ -23,7 +23,7 @@ cd ../core
 MUXCORE_INSECURE_DISABLE_TLS=true ./muxcored
 
 # Terminal 2: start module
-make build && ./config-watcher --muxcore-mesh-addr localhost:9090
+make build && MUXCORE_INSECURE_DISABLE_TLS=true ./config-watcher --muxcore-mesh-addr localhost:9090
 ```
 
 ## Running Tests

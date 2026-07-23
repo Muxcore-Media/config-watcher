@@ -1,11 +1,11 @@
 # Config Watcher
 
 [![Go Version](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev/)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)(LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 **Notifies modules when infrastructure services change at runtime.**
 
-A MuxCore sidecar module that implements the `ConfigWatcher` contract. Modules subscribe by capability string via `WatchChanges` (server-streaming gRPC) and receive events when a matching module registers or unregisters. Events are pushed by core or other modules through the `ReportModuleChange` admin RPC.
+A MuxCore sidecar module that provides the `config.watcher` capability. Modules subscribe by capability string via `WatchChanges` (server-streaming gRPC) and receive events when a matching module registers or unregisters. Events are pushed by core or other modules through the `ReportModuleChange` admin RPC.
 
 ---
 
@@ -36,7 +36,7 @@ Core or another module calls `ReportModuleChange` with an event type, module ID,
 | `CONFIG_WATCHER_GRPC_ADDR` | `:9611` | gRPC listen address |
 | `MUXCORE_GRPC_ADDR` | — | Core mesh address |
 | `MUXCORE_MODULE_ID` | `config-watcher` | Module identity |
-| `MUXCORE_INSECURE_DISABLE_TLS` | — | Disable TLS (dev only) |
+| `MUXCORE_INSECURE_DISABLE_TLS` | — | Disable TLS to core (`true`, dev only) |
 
 ---
 
@@ -95,7 +95,7 @@ make proto   # regenerate admin proto
 ## Implementation
 
 - Registers with capability: `"config.watcher"`
-- Implements `contracts.ConfigWatcher`
+- Declares contract `ConfigWatcher` (`v0.4.0`); serves gRPC (not in-process `OnChange`)
 - Exposes two gRPC services:
   - `ConfigWatcherService.WatchChanges` (server-streaming)
   - `ConfigWatcherAdminService.ReportModuleChange` (unary)
