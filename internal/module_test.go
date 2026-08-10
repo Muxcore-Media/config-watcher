@@ -23,8 +23,8 @@ func TestModuleInfo(t *testing.T) {
 	if info.ID == "" {
 		t.Error("module ID must not be empty")
 	}
-	if info.Version == "" {
-		t.Error("module version must not be empty")
+	if info.Version != "0.1.1" {
+		t.Errorf("version = %q", info.Version)
 	}
 	if info.MinCoreVersion == "" {
 		t.Error("MinCoreVersion must not be empty")
@@ -37,6 +37,28 @@ func TestModuleInfo(t *testing.T) {
 	}
 	if info.Capabilities[0] != "config.watcher" {
 		t.Errorf("expected capability config.watcher, got %s", info.Capabilities[0])
+	}
+	foundSettings := false
+	for _, c := range info.Capabilities {
+		if c == "settings" {
+			foundSettings = true
+		}
+	}
+	if !foundSettings {
+		t.Error("expected settings capability")
+	}
+}
+
+func TestSettings_StreamBuffer(t *testing.T) {
+	m := NewModule(Config{StreamBuffer: 8})
+	if err := m.UpdateSetting("stream_buffer", "32"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Settings()[0].Value != "32" {
+		t.Fatalf("value=%q", m.Settings()[0].Value)
+	}
+	if err := m.UpdateSetting("stream_buffer", "0"); err == nil {
+		t.Fatal("expected error")
 	}
 }
 
@@ -66,6 +88,32 @@ func TestWatchThenReport(t *testing.T) {
 		t.Fatalf("WatchChanges: %v", err)
 	}
 
+	recvCh := make(chan *configwatcherv1.WatchChangesResponse, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		recvCh <- resp
+	}()
+
+	// Allow the server-side watch registration to complete before reporting.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		m.mu.RLock()
+		n := len(m.watchers["secrets"])
+		m.mu.RUnlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for watcher registration")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	_, err = adminClient.ReportModuleChange(ctx, &adminv1.ReportModuleChangeRequest{
 		EventType:  "module.registered",
 		ModuleId:   "secrets-provider",
@@ -75,17 +123,9 @@ func TestWatchThenReport(t *testing.T) {
 		t.Fatalf("ReportModuleChange: %v", err)
 	}
 
-	recvCh := make(chan *configwatcherv1.WatchChangesResponse, 1)
-	go func() {
-		resp, err := stream.Recv()
-		if err != nil {
-			t.Errorf("stream Recv: %v", err)
-			return
-		}
-		recvCh <- resp
-	}()
-
 	select {
+	case err := <-errCh:
+		t.Fatalf("stream Recv: %v", err)
 	case resp := <-recvCh:
 		if resp.GetEventType() != "module.registered" {
 			t.Errorf("expected event_type module.registered, got %s", resp.GetEventType())
@@ -100,7 +140,6 @@ func TestWatchThenReport(t *testing.T) {
 		t.Fatal("timed out waiting for event")
 	}
 }
-
 func TestMultipleWatchers(t *testing.T) {
 	m := NewModule(testConfig())
 	ctx := context.Background()
@@ -131,6 +170,36 @@ func TestMultipleWatchers(t *testing.T) {
 		t.Fatalf("WatchChanges s2: %v", err)
 	}
 
+	recvCh := make(chan int, 2)
+	errCh := make(chan error, 2)
+	for _, s := range []grpc.ServerStreamingClient[configwatcherv1.WatchChangesResponse]{s1, s2} {
+		s := s
+		go func() {
+			resp, err := s.Recv()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if resp.GetEventType() == "module.registered" {
+				recvCh <- 1
+			}
+		}()
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		m.mu.RLock()
+		n := len(m.watchers["secrets"])
+		m.mu.RUnlock()
+		if n >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for watchers, have %d", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	_, err = adminClient.ReportModuleChange(ctx, &adminv1.ReportModuleChangeRequest{
 		EventType:  "module.registered",
 		ModuleId:   "secrets-provider",
@@ -140,25 +209,12 @@ func TestMultipleWatchers(t *testing.T) {
 		t.Fatalf("ReportModuleChange: %v", err)
 	}
 
-	recvCh := make(chan int, 2)
-	for _, s := range []grpc.ServerStreamingClient[configwatcherv1.WatchChangesResponse]{s1, s2} {
-		s := s
-		go func() {
-			resp, err := s.Recv()
-			if err != nil {
-				t.Errorf("stream Recv: %v", err)
-				return
-			}
-			if resp.GetEventType() == "module.registered" {
-				recvCh <- 1
-			}
-		}()
-	}
-
 	received := 0
 	timeout := time.After(5 * time.Second)
 	for received < 2 {
 		select {
+		case err := <-errCh:
+			t.Fatalf("stream Recv: %v", err)
 		case <-recvCh:
 			received++
 		case <-timeout:
