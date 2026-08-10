@@ -3,14 +3,14 @@
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-09
+
 ### Added
 
-- Initial project scaffold from muxcore-module-starter
-- Module with ConfigWatcherService.WatchChanges (server-streaming)
-- Module with ConfigWatcherAdminService.ReportModuleChange (unary admin)
-- Per-capability watcher fan-out with thread-safe channel dispatch
-- Comprehensive test suite (info, lifecycle, watch-then-report, multiple watchers)
+- `config.watcher` sidecar: `ConfigWatcherService.WatchChanges` (server-streaming) and `ConfigWatcherAdminService.ReportModuleChange`.
+- Per-capability watcher fan-out with thread-safe channel dispatch (wildcard `""` supported).
+- Unit coverage: info, lifecycle, watch-then-report, multiple watchers.
