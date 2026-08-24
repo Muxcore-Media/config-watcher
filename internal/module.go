@@ -51,7 +51,7 @@ func NewModule(cfg Config) *Module {
 		cfg.ID = "config-watcher"
 	}
 	if cfg.GRPCAddr == "" {
-		cfg.GRPCAddr = ":9611"
+		cfg.GRPCAddr = ":9614"
 	}
 	if v := os.Getenv("CONFIG_WATCHER_GRPC_ADDR"); v != "" {
 		cfg.GRPCAddr = v
