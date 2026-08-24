@@ -27,17 +27,18 @@ const defaultStreamBuffer = 16
 type Module struct {
 	configwatcherv1.UnimplementedConfigWatcherServiceServer
 	adminv1.UnimplementedConfigWatcherAdminServiceServer
-	grpcSrv *grpc.Server
-	lis     net.Listener
+
+	watchers map[string]map[chan *configwatcherv1.WatchChangesResponse]struct{}
+	grpcSrv  *grpc.Server
+	lis      net.Listener
 
 	id       string
 	grpcAddr string
 
-	cfgMu        sync.RWMutex
 	streamBuffer int
 
-	mu       sync.RWMutex
-	watchers map[string]map[chan *configwatcherv1.WatchChangesResponse]struct{}
+	cfgMu sync.RWMutex
+	mu    sync.RWMutex
 }
 
 type Config struct {
@@ -91,7 +92,8 @@ func (m *Module) Info() contracts.ModuleInfo {
 }
 
 func (m *Module) Init(ctx context.Context) error {
-	lis, err := net.Listen("tcp", m.grpcAddr)
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, "tcp", m.grpcAddr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", m.grpcAddr, err)
 	}
@@ -130,22 +132,22 @@ func (m *Module) Health(ctx context.Context) error {
 }
 
 func (m *Module) WatchChanges(req *configwatcherv1.WatchChangesRequest, stream grpc.ServerStreamingServer[configwatcherv1.WatchChangesResponse]) error {
-	cap := req.GetCapability()
-	slog.Debug("config-watcher: new watch", "capability", cap)
+	capability := req.GetCapability()
+	slog.Debug("config-watcher: new watch", "capability", capability)
 
 	ch := make(chan *configwatcherv1.WatchChangesResponse, m.streamBuf())
 	m.mu.Lock()
-	if m.watchers[cap] == nil {
-		m.watchers[cap] = make(map[chan *configwatcherv1.WatchChangesResponse]struct{})
+	if m.watchers[capability] == nil {
+		m.watchers[capability] = make(map[chan *configwatcherv1.WatchChangesResponse]struct{})
 	}
-	m.watchers[cap][ch] = struct{}{}
+	m.watchers[capability][ch] = struct{}{}
 	m.mu.Unlock()
 
 	defer func() {
 		m.mu.Lock()
-		delete(m.watchers[cap], ch)
-		if len(m.watchers[cap]) == 0 {
-			delete(m.watchers, cap)
+		delete(m.watchers[capability], ch)
+		if len(m.watchers[capability]) == 0 {
+			delete(m.watchers, capability)
 		}
 		m.mu.Unlock()
 		close(ch)
@@ -188,8 +190,8 @@ func (m *Module) ReportModuleChange(ctx context.Context, req *adminv1.ReportModu
 
 	caps := []string{req.GetCapability(), ""}
 	m.mu.RLock()
-	for _, cap := range caps {
-		watchers, ok := m.watchers[cap]
+	for _, capability := range caps {
+		watchers, ok := m.watchers[capability]
 		if !ok {
 			continue
 		}
@@ -197,7 +199,7 @@ func (m *Module) ReportModuleChange(ctx context.Context, req *adminv1.ReportModu
 			select {
 			case ch <- evt:
 			case <-time.After(100 * time.Millisecond):
-				slog.Warn("config-watcher: dropping event for slow watcher", "capability", cap)
+				slog.Warn("config-watcher: dropping event for slow watcher", "capability", capability)
 			}
 		}
 	}
