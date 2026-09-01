@@ -31,7 +31,7 @@ proto:
 		-I proto proto/muxcore/configwatcher/v1/admin.proto
 
 docker:
-	docker build -t ghcr.io/muxcore-media/$(BINARY):$(VERSION) .
+	docker build -t ghcr.io/muxcore-media/$(BINARY):$(VERSION) -f Dockerfile ..
 	docker tag ghcr.io/muxcore-media/$(BINARY):$(VERSION) ghcr.io/muxcore-media/$(BINARY):latest
 
 docker-push: docker

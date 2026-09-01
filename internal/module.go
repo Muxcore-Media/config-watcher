@@ -17,6 +17,7 @@ import (
 
 	"github.com/Muxcore-Media/core/pkg/contracts"
 	configwatcherv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/configwatcher/v1"
+	"github.com/Muxcore-Media/core/sdk/go/client"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
 
 	"github.com/Muxcore-Media/config-watcher/internal/adminv1"
@@ -24,6 +25,7 @@ import (
 
 const defaultStreamBuffer = 16
 
+//nolint:govet // struct field alignment
 type Module struct {
 	configwatcherv1.UnimplementedConfigWatcherServiceServer
 	adminv1.UnimplementedConfigWatcherAdminServiceServer
@@ -32,13 +34,21 @@ type Module struct {
 	grpcSrv  *grpc.Server
 	lis      net.Listener
 
-	id       string
-	grpcAddr string
-
+	id           string
+	grpcAddr     string
+	moduleToken  string
 	streamBuffer int
 
-	cfgMu sync.RWMutex
-	mu    sync.RWMutex
+	cfgMu      sync.RWMutex
+	mu         sync.RWMutex
+	meshMu     sync.RWMutex
+	registryMu sync.RWMutex
+
+	mc         *client.Client
+	moduleCaps map[string][]string
+
+	eventsCancel context.CancelFunc
+	eventsDone   chan struct{}
 }
 
 type Config struct {
@@ -69,8 +79,10 @@ func NewModule(cfg Config) *Module {
 	return &Module{
 		id:           cfg.ID,
 		grpcAddr:     cfg.GRPCAddr,
+		moduleToken:  moduleTokenFromEnv(),
 		streamBuffer: buf,
 		watchers:     make(map[string]map[chan *configwatcherv1.WatchChangesResponse]struct{}),
+		moduleCaps:   make(map[string][]string),
 	}
 }
 
@@ -79,14 +91,14 @@ func (m *Module) Info() contracts.ModuleInfo {
 		ID:           m.id,
 		Name:         "Config Watcher",
 		Version:      "0.1.1",
-		Roles:        []string{},
+		Roles:        []string{"config"},
 		Description:  "Notifies modules when infrastructure services change at runtime.",
 		Author:       "MuxCore Media",
 		Capabilities: []string{"config.watcher", "settings"},
 		Contracts: []contracts.ContractDeclaration{
 			{Repo: "github.com/Muxcore-Media/core/pkg/contracts", Interface: "ConfigWatcher", Version: "v0.4.0"},
 		},
-		MinCoreVersion: "0.4.0",
+		MinCoreVersion: "0.5.8",
 		HTTPAddr:       m.grpcAddr,
 	}
 }
@@ -106,34 +118,83 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	m.grpcSrv = grpc.NewServer()
-	configwatcherv1.RegisterConfigWatcherServiceServer(m.grpcSrv, m)
-	adminv1.RegisterConfigWatcherAdminServiceServer(m.grpcSrv, m)
-	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)
+	srv := grpc.NewServer(grpc.UnaryInterceptor(authUnaryInterceptor(m.moduleToken)))
+	lis := m.lis
+	m.grpcSrv = srv
+	configwatcherv1.RegisterConfigWatcherServiceServer(srv, m)
+	adminv1.RegisterConfigWatcherAdminServiceServer(srv, m)
+	modulesdk.RegisterSettings(srv, m.id, m)
 	go func() {
 		slog.Info("config-watcher gRPC started", "addr", m.grpcAddr)
-		if err := m.grpcSrv.Serve(m.lis); err != nil {
+		if err := srv.Serve(lis); err != nil {
 			slog.Error("config-watcher gRPC error", "error", err)
 		}
 	}()
+
+	m.dialCore()
+	m.bootstrapRegistryCache(ctx)
+
+	eventsCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	m.eventsCancel = cancel
+	m.eventsDone = done
+	go func() {
+		defer close(done)
+		if delay := registrySyncDelay(); delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-eventsCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		m.subscribeRegistryEvents(eventsCtx)
+	}()
+
 	return nil
 }
 
 func (m *Module) Stop(ctx context.Context) error {
-	if m.grpcSrv != nil {
-		m.grpcSrv.GracefulStop()
+	if m.eventsCancel != nil {
+		m.eventsCancel()
 	}
+	if m.eventsDone != nil {
+		<-m.eventsDone
+	}
+	srv := m.grpcSrv
+	if srv != nil {
+		srv.GracefulStop()
+		m.grpcSrv = nil
+	}
+	if m.lis != nil {
+		_ = m.lis.Close()
+		m.lis = nil
+	}
+	m.meshMu.Lock()
+	if m.mc != nil {
+		_ = m.mc.Close()
+		m.mc = nil
+	}
+	m.meshMu.Unlock()
 	slog.Info("config-watcher stopped")
 	return nil
 }
 
 func (m *Module) Health(ctx context.Context) error {
+	if m.lis == nil || m.grpcSrv == nil {
+		return fmt.Errorf("gRPC server not serving")
+	}
 	return nil
 }
 
 func (m *Module) WatchChanges(req *configwatcherv1.WatchChangesRequest, stream grpc.ServerStreamingServer[configwatcherv1.WatchChangesResponse]) error {
 	capability := req.GetCapability()
 	slog.Debug("config-watcher: new watch", "capability", capability)
+
+	if err := m.sendSnapshot(stream.Context(), capability, stream); err != nil {
+		return err
+	}
 
 	ch := make(chan *configwatcherv1.WatchChangesResponse, m.streamBuf())
 	m.mu.Lock()
@@ -182,28 +243,31 @@ func (m *Module) ReportModuleChange(ctx context.Context, req *adminv1.ReportModu
 		"capability", req.GetCapability(),
 	)
 
-	evt := &configwatcherv1.WatchChangesResponse{
+	m.fanOut(&configwatcherv1.WatchChangesResponse{
 		EventType:  req.GetEventType(),
 		ModuleId:   req.GetModuleId(),
 		Capability: req.GetCapability(),
-	}
+	})
 
-	caps := []string{req.GetCapability(), ""}
+	return &adminv1.ReportModuleChangeResponse{}, nil
+}
+
+func (m *Module) fanOut(evt *configwatcherv1.WatchChangesResponse) {
+	caps := []string{evt.GetCapability(), ""}
 	m.mu.RLock()
+	targets := make([]chan *configwatcherv1.WatchChangesResponse, 0)
 	for _, capability := range caps {
-		watchers, ok := m.watchers[capability]
-		if !ok {
-			continue
-		}
-		for ch := range watchers {
-			select {
-			case ch <- evt:
-			case <-time.After(100 * time.Millisecond):
-				slog.Warn("config-watcher: dropping event for slow watcher", "capability", capability)
-			}
+		for ch := range m.watchers[capability] {
+			targets = append(targets, ch)
 		}
 	}
 	m.mu.RUnlock()
 
-	return &adminv1.ReportModuleChangeResponse{}, nil
+	for _, ch := range targets {
+		select {
+		case ch <- evt:
+		case <-time.After(100 * time.Millisecond):
+			slog.Warn("config-watcher: dropping event for slow watcher", "capability", evt.GetCapability())
+		}
+	}
 }

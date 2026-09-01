@@ -1,14 +1,17 @@
 # AGENTS.md — config-watcher
 
-MuxCore sidecar module (`config-watcher`). Workspace deploy and SSH: [`../AGENTS.md`](../AGENTS.md). Default ports: [`_mvp/PORTS.md`](../_mvp/PORTS.md).
+MuxCore sidecar module (`config-watcher`). Workspace deploy and SSH: [`../AGENTS.md`](../AGENTS.md). Default ports: [`../_mvp/PORTS.md`](../_mvp/PORTS.md).
 
 ## Module identity
 
 | Field | Value |
 |-------|-------|
 | Directory | `config-watcher` |
-| Capabilities | see muxcore.json |
-| Contracts | none declared |
+| Capabilities | `config.watcher`, `settings` |
+| Contracts | `ConfigWatcher` (v0.4.0) |
+| Role | `config` |
+
+Enable in the MVP stack with `MVP_ENABLE_CONFIG_WATCHER=1` in `_mvp/.env` (see `_mvp/run-host.sh`).
 
 ## Agent rules
 
@@ -22,5 +25,7 @@ MuxCore sidecar module (`config-watcher`). Workspace deploy and SSH: [`../AGENTS
 
 ```bash
 cd config-watcher
-go test ./...
+nix-shell -p go --run 'go test -race ./...'
 ```
+
+Remote callers use `pkg/client` (`ConfigWatcher.OnChange` over `WatchChanges` gRPC).

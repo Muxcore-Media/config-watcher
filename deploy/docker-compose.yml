@@ -15,11 +15,12 @@ services:
 
   config-watcher:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: config-watcher/Dockerfile
     ports:
-      - "9611"
+      - "9614:9614"
     environment:
+      CONFIG_WATCHER_GRPC_ADDR: ":9614"
       MUXCORE_GRPC_ADDR: core:9090
       MUXCORE_INSECURE_DISABLE_TLS: "true"
       MUXCORE_LOG_LEVEL: debug

@@ -5,7 +5,7 @@
 
 **Notifies modules when infrastructure services change at runtime.**
 
-A MuxCore sidecar module that provides the `config.watcher` capability. Modules subscribe by capability string via `WatchChanges` (server-streaming gRPC) and receive events when a matching module registers or unregisters. Events are pushed by core or other modules through the `ReportModuleChange` admin RPC.
+A MuxCore sidecar module that provides the `config.watcher` capability. Modules subscribe by capability string via `WatchChanges` (server-streaming gRPC) and receive events when a matching module registers or unregisters. The module subscribes to core `module.registered` / `module.unregistered` events and fans out internally; `ReportModuleChange` remains available for trusted mesh callers.
 
 ---
 
@@ -14,16 +14,20 @@ A MuxCore sidecar module that provides the `config.watcher` capability. Modules 
 ```
 Module ──→ WatchChanges(stream) ──→ config-watcher
                                          ↑
-Core/Admin ──→ ReportModuleChange ────────┘
+Core events ──→ module.registered ───────┤
+              module.unregistered ────────┘
+Mesh/admin ──→ ReportModuleChange ────────┘ (authenticated)
 ```
 
 ### WatchChanges (server-streaming)
 
-Clients call `WatchChanges` with a capability string. The server keeps the stream open and pushes `WatchChangesResponse` events as they arrive.
+Clients call `WatchChanges` with a capability string. On subscribe the server emits a snapshot of currently registered modules matching that capability (registry lookup), then keeps the stream open and pushes live events.
+
+Use `pkg/client` for the documented `contracts.ConfigWatcher.OnChange` interface over gRPC.
 
 ### ReportModuleChange (unary admin)
 
-Core or another module calls `ReportModuleChange` with an event type, module ID, and capability. The module fans out the event to all watchers matching that capability (plus wildcard watchers watching `""`).
+Authenticated mesh callers may push synthetic events. Requires `x-caller-id` mesh metadata or `CONFIG_WATCHER_MODULE_TOKEN` / `MUXCORE_MODULE_TOKEN` bearer auth.
 
 ---
 
@@ -33,8 +37,11 @@ Core or another module calls `ReportModuleChange` with an event type, module ID,
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CONFIG_WATCHER_GRPC_ADDR` | `:9611` | gRPC listen address |
-| `MUXCORE_GRPC_ADDR` | — | Core mesh address |
+| `CONFIG_WATCHER_GRPC_ADDR` | `:9614` | gRPC listen address |
+| `CONFIG_WATCHER_STREAM_BUFFER` | `16` | Per-watcher channel buffer |
+| `CONFIG_WATCHER_REGISTRY_SYNC_DELAY` | `2s` | Delay before subscribing to core registry events |
+| `CONFIG_WATCHER_MODULE_TOKEN` | — | Bearer token for `ReportModuleChange` |
+| `MUXCORE_GRPC_ADDR` | — | Core mesh address (registry + events) |
 | `MUXCORE_MODULE_ID` | `config-watcher` | Module identity |
 | `MUXCORE_INSECURE_DISABLE_TLS` | — | Disable TLS to core (`true`, dev only) |
 
@@ -57,9 +64,13 @@ export MUXCORE_INSECURE_DISABLE_TLS=true
 
 ### Docker
 
+Build from the umbrella workspace root (needs sibling `core/`):
+
 ```bash
 make docker
 docker run -d --restart=unless-stopped \
+  -e CONFIG_WATCHER_GRPC_ADDR=:9614 \
+  -p 9614:9614 \
   -e MUXCORE_GRPC_ADDR=core:9090 \
   ghcr.io/muxcore-media/config-watcher:latest
 ```
@@ -95,10 +106,11 @@ make proto   # regenerate admin proto
 ## Implementation
 
 - Registers with capability: `"config.watcher"`
-- Declares contract `ConfigWatcher` (`v0.4.0`); serves gRPC (not in-process `OnChange`)
+- Declares contract `ConfigWatcher` (`v0.4.0`); remote client in `pkg/client`
 - Exposes two gRPC services:
   - `ConfigWatcherService.WatchChanges` (server-streaming)
-  - `ConfigWatcherAdminService.ReportModuleChange` (unary)
+  - `ConfigWatcherAdminService.ReportModuleChange` (unary, authenticated)
+- Subscribes to core registry events and emits capability snapshots for late joiners
 - Event fan-out per capability with non-blocking channel sends
 
 ---
