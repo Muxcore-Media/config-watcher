@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Default gRPC listen bind is loopback (`127.0.0.1:9611`); set `CONFIG_WATCHER_GRPC_ADDR` to `:9611` or `0.0.0.0:9611` for all interfaces
+
 ## [0.1.1] — 2026-08-10
 
 ### Added

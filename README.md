@@ -33,7 +33,7 @@ Core or another module calls `ReportModuleChange` with an event type, module ID,
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CONFIG_WATCHER_GRPC_ADDR` | `:9611` | gRPC listen address |
+| `CONFIG_WATCHER_GRPC_ADDR` | `127.0.0.1:9611` | gRPC listen address (set `:9611` or `0.0.0.0:9611` for all interfaces) |
 | `MUXCORE_GRPC_ADDR` | — | Core mesh address |
 | `MUXCORE_MODULE_ID` | `config-watcher` | Module identity |
 | `MUXCORE_INSECURE_DISABLE_TLS` | — | Disable TLS to core (`true`, dev only) |

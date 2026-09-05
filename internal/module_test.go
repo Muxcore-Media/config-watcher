@@ -51,6 +51,17 @@ func TestModuleInfo(t *testing.T) {
 	if !foundSettings {
 		t.Error("expected settings capability")
 	}
+	if info.HTTPAddr != "127.0.0.1:9611" {
+		t.Errorf("HTTPAddr = %q, want 127.0.0.1:9611", info.HTTPAddr)
+	}
+}
+
+func TestEnvGRPCAddrAllInterfaces(t *testing.T) {
+	t.Setenv("CONFIG_WATCHER_GRPC_ADDR", ":9611")
+	m := NewModule(Config{})
+	if m.Info().HTTPAddr != ":9611" {
+		t.Fatalf("HTTPAddr = %q, want :9611", m.Info().HTTPAddr)
+	}
 }
 
 func TestSettings_StreamBuffer(t *testing.T) {
