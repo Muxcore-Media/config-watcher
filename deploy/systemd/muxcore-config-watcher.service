@@ -14,7 +14,7 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
 
-Environment=CONFIG_WATCHER_GRPC_ADDR=:9611
+Environment=CONFIG_WATCHER_GRPC_ADDR=127.0.0.1:9611
 
 ; Security hardening
 CapabilityBoundingSet=

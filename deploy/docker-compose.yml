@@ -24,6 +24,7 @@ services:
       MUXCORE_INSECURE_DISABLE_TLS: "true"
       MUXCORE_LOG_LEVEL: debug
       MUXCORE_MODULE_ID: config-watcher
+      CONFIG_WATCHER_GRPC_ADDR: ":9611"
     depends_on:
       core:
         condition: service_healthy

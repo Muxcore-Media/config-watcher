@@ -12,7 +12,7 @@
 |------------|--------|
 | `config.watcher` | Current |
 
-gRPC listen default `:9611` (`CONFIG_WATCHER_GRPC_ADDR`).
+gRPC listen default `127.0.0.1:9611` (`CONFIG_WATCHER_GRPC_ADDR`; set `:9611` or `0.0.0.0:9611` for all interfaces).
 
 ## Breaking Changes
 
