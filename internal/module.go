@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	"github.com/Muxcore-Media/core/pkg/contracts"
@@ -20,6 +21,7 @@ import (
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
 
 	"github.com/Muxcore-Media/config-watcher/internal/adminv1"
+	"github.com/Muxcore-Media/config-watcher/internal/grpctls"
 )
 
 const defaultStreamBuffer = 16
@@ -104,7 +106,21 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	m.grpcSrv = grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	tlsCfg, err := grpctls.ServerConfig()
+	if err != nil {
+		return fmt.Errorf("gRPC TLS: %w", err)
+	}
+	if tlsCfg != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+		slog.Info("config-watcher gRPC TLS enabled", "addr", m.grpcAddr)
+	} else {
+		slog.Warn("config-watcher gRPC listening without TLS (dev only)",
+			"addr", m.grpcAddr,
+			"hint", "unset MUXCORE_INSECURE_DISABLE_TLS for production",
+		)
+	}
+	m.grpcSrv = grpc.NewServer(grpcOpts...)
 	configwatcherv1.RegisterConfigWatcherServiceServer(m.grpcSrv, m)
 	adminv1.RegisterConfigWatcherAdminServiceServer(m.grpcSrv, m)
 	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)

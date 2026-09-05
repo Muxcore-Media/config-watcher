@@ -17,6 +17,10 @@ func testConfig() Config {
 	return Config{GRPCAddr: ":0"}
 }
 
+func enableInsecureGRPCForTest(t *testing.T) {
+	t.Setenv("MUXCORE_INSECURE_DISABLE_TLS", "true")
+}
+
 func TestModuleInfo(t *testing.T) {
 	m := NewModule(Config{})
 	info := m.Info()
@@ -63,6 +67,7 @@ func TestSettings_StreamBuffer(t *testing.T) {
 }
 
 func TestWatchThenReport(t *testing.T) {
+	enableInsecureGRPCForTest(t)
 	m := NewModule(testConfig())
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
@@ -141,6 +146,7 @@ func TestWatchThenReport(t *testing.T) {
 	}
 }
 func TestMultipleWatchers(t *testing.T) {
+	enableInsecureGRPCForTest(t)
 	m := NewModule(testConfig())
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
@@ -224,6 +230,7 @@ func TestMultipleWatchers(t *testing.T) {
 }
 
 func TestModuleLifecycle(t *testing.T) {
+	enableInsecureGRPCForTest(t)
 	m := NewModule(testConfig())
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
