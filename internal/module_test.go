@@ -87,14 +87,14 @@ func TestWatchThenReport(t *testing.T) {
 	if err := m.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer m.Stop(ctx)
+	defer func() { _ = m.Stop(ctx) }()
 
 	addr := m.lis.Addr().String()
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("grpc dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	watchClient := configwatcherv1.NewConfigWatcherServiceClient(conn)
 	adminClient := adminv1.NewConfigWatcherAdminServiceClient(conn)
@@ -166,14 +166,14 @@ func TestMultipleWatchers(t *testing.T) {
 	if err := m.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer m.Stop(ctx)
+	defer func() { _ = m.Stop(ctx) }()
 
 	addr := m.lis.Addr().String()
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("grpc dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	watchClient := configwatcherv1.NewConfigWatcherServiceClient(conn)
 	adminClient := adminv1.NewConfigWatcherAdminServiceClient(conn)
