@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
+	manifest "github.com/Muxcore-Media/config-watcher"
 	"github.com/Muxcore-Media/core/pkg/contracts"
 	configwatcherv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/configwatcher/v1"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
@@ -79,7 +80,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:           m.id,
 		Name:         "Config Watcher",
-		Version:      "0.1.1",
+		Version:      modulesdk.ManifestVersion(manifest.ManifestJSON),
 		Roles:        []string{},
 		Description:  "Notifies modules when infrastructure services change at runtime.",
 		Author:       "MuxCore Media",

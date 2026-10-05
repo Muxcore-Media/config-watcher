@@ -11,6 +11,9 @@ import (
 	configwatcherv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/configwatcher/v1"
 
 	"github.com/Muxcore-Media/config-watcher/internal/adminv1"
+
+	manifest "github.com/Muxcore-Media/config-watcher"
+	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
 )
 
 func testConfig() Config {
@@ -27,7 +30,7 @@ func TestModuleInfo(t *testing.T) {
 	if info.ID == "" {
 		t.Error("module ID must not be empty")
 	}
-	if info.Version != "0.1.1" {
+	if info.Version != modulesdk.ManifestVersion(manifest.ManifestJSON) {
 		t.Errorf("version = %q", info.Version)
 	}
 	if info.MinCoreVersion == "" {
